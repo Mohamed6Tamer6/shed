@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>طفاية الحريق الخطأ</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  :root { --ink: #f4efe6; --dim: #cfc5b6; --panel: rgba(18, 15, 12, .78); --line: rgba(255, 255, 255, .16); --accent: #e8a64d; --good: #8fd08a; --bad: #ef8a7a; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #14110e; color: var(--ink); font-family: "Noto Sans Arabic", "Noto Naskh Arabic", "Segoe UI", system-ui, sans-serif; }
+  canvas { display: block; touch-action: none; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .hidden { display: none !important; }
+
+  #loading { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: #14110e; transition: opacity .6s; }
+  #loading.done { opacity: 0; pointer-events: none; }
+  #loading .bar { width: 240px; height: 3px; background: #2e2822; border-radius: 2px; overflow: hidden; }
+  #loading .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+
+  /* full-screen cards: briefing, endings, debrief */
+  .screen { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(10, 8, 6, .72); backdrop-filter: blur(5px); overflow: auto; }
+  .card { width: min(720px, 100%); max-height: 100%; overflow: auto; padding: 26px 30px; border-radius: 16px; background: var(--panel); border: 1px solid var(--line); line-height: 1.9; }
+  .card h1 { margin: 0 0 6px; font-size: 26px; }
+  .card h2 { margin: 18px 0 4px; font-size: 17px; color: var(--accent); }
+  .card p { margin: 6px 0; }
+  .card ul { margin: 6px 0; padding-inline-start: 22px; }
+  .card .note { color: var(--dim); font-size: 14px; }
+  .card .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+  .primary { min-height: 44px; padding: 8px 22px; border-radius: 10px; border: 1px solid var(--accent); background: rgba(232, 166, 77, .18); font-weight: 600; }
+  .primary:hover { background: rgba(232, 166, 77, .32); }
+  .ghost { min-height: 44px; padding: 8px 18px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255, 255, 255, .05); }
+  .ghost:hover { background: rgba(255, 255, 255, .12); }
+  .card select { min-height: 36px; padding: 4px 10px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255, 255, 255, .06); color: inherit; font: inherit; }
+  .card select option { color: #111; }
+  kbd { display: inline-block; min-width: 22px; padding: 0 6px; border-radius: 5px; background: rgba(255, 255, 255, .14); font: 13px ui-monospace, monospace; text-align: center; direction: ltr; }
+  .tag { display: inline-block; padding: 1px 10px; border-radius: 999px; font-size: 13px; border: 1px solid var(--line); }
+  .tag.good { color: var(--good); border-color: var(--good); } .tag.bad { color: var(--bad); border-color: var(--bad); } .tag.mid { color: var(--accent); border-color: var(--accent); }
+  .timeline { list-style: none; padding: 0; }
+  .timeline li { padding: 4px 0; border-bottom: 1px dashed var(--line); display: flex; gap: 10px; }
+  .timeline time { color: var(--dim); font: 13px ui-monospace, monospace; direction: ltr; min-width: 44px; }
+
+  /* in-game overlays */
+  #crosshair { position: fixed; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px; border-radius: 50%; background: rgba(255, 255, 255, .8); box-shadow: 0 0 3px rgba(0, 0, 0, .7); z-index: 5; pointer-events: none; transition: transform .12s; }
+  #crosshair.on { transform: scale(2.2); }
+  #prompt { position: fixed; left: 50%; top: calc(50% + 26px); transform: translateX(-50%); z-index: 5; padding: 6px 14px; border-radius: 9px; background: var(--panel); font-size: 15px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .15s; }
+  #prompt.on { opacity: 1; }
+  #subtitle { position: fixed; left: 50%; bottom: 9vh; transform: translateX(-50%); z-index: 6; max-width: min(820px, 90vw); padding: 10px 20px; border-radius: 12px; background: var(--panel); font-size: 19px; line-height: 1.8; text-align: center; opacity: 0; transition: opacity .25s; pointer-events: none; }
+  #subtitle.on { opacity: 1; }
+  #subtitle b { color: var(--accent); margin-inline-end: 8px; }
+  #objective { position: fixed; top: 14px; right: 14px; z-index: 5; max-width: 320px; padding: 8px 14px; border-radius: 11px; background: var(--panel); font-size: 14.5px; line-height: 1.7; }
+  #objective small { display: block; color: var(--dim); }
+  #status { position: fixed; bottom: 14px; left: 14px; z-index: 5; padding: 6px 12px; border-radius: 10px; background: var(--panel); font-size: 13.5px; color: var(--dim); direction: rtl; }
+  #status .ok { color: var(--good); } #status .no { color: var(--bad); }
+  #info { position: fixed; left: 14px; top: 14px; z-index: 5; width: min(340px, 80vw); padding: 10px 14px; border-radius: 12px; background: var(--panel); font-size: 14.5px; line-height: 1.75; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  #info.on { opacity: 1; }
+  #info h3 { margin: 0 0 2px; font-size: 16px; color: var(--accent); }
+  #gauge { position: fixed; right: 14px; bottom: 14px; z-index: 5; width: 170px; padding: 8px 12px; border-radius: 11px; background: var(--panel); font-size: 13px; }
+  #gauge .track { height: 6px; margin-top: 6px; border-radius: 3px; background: rgba(255, 255, 255, .14); overflow: hidden; }
+  #gauge .track i { display: block; height: 100%; width: 100%; background: var(--accent); }
+  #hint { position: fixed; right: 14px; bottom: 14px; z-index: 4; padding: 6px 12px; border-radius: 10px; background: var(--panel); font-size: 12.5px; color: var(--dim); }
+  #fps { position: fixed; left: 50%; top: 8px; z-index: 5; font: 12px ui-monospace, monospace; color: var(--dim); direction: ltr; }
+  #resume { position: fixed; inset: 0; z-index: 15; display: flex; align-items: center; justify-content: center; background: rgba(10, 8, 6, .45); cursor: pointer; }
+  #resume div { padding: 14px 24px; border-radius: 12px; background: var(--panel); font-size: 17px; }
+
+  /* choices, ordering task, report: centred panels that take the mouse */
+  #panel { position: fixed; left: 50%; bottom: 17vh; transform: translateX(-50%); z-index: 12; width: min(640px, 92vw); padding: 14px 16px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line); }
+  #panel h3 { margin: 0 0 8px; font-size: 16px; color: var(--accent); }
+  #panel .opt { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; margin: 6px 0; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255, 255, 255, .05); text-align: start; font-size: 16px; line-height: 1.6; }
+  #panel .opt:hover, #panel .opt.sel { background: rgba(232, 166, 77, .2); border-color: var(--accent); }
+  #panel .opt kbd { flex: none; }
+  #panel .slots { display: grid; gap: 8px; }
+  #panel .q { margin: 8px 0 2px; color: var(--dim); font-size: 14px; }
+  #panel .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  #panel .chip { min-height: 40px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255, 255, 255, .05); font-size: 15px; }
+  #panel .chip.sel { background: rgba(232, 166, 77, .25); border-color: var(--accent); }
+  #panel .order .opt span.n { flex: none; width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line); text-align: center; line-height: 26px; font: 14px ui-monospace, monospace; }
+  #panel .order .opt.sel span.n { background: var(--accent); color: #1a1408; border-color: var(--accent); }
+  #panel .row { display: flex; gap: 8px; margin-top: 10px; }
+  #fade { position: fixed; inset: 0; z-index: 18; background: #000; opacity: 0; pointer-events: none; transition: opacity 1.4s; }
+  #fade.on { opacity: 1; }
+
+  /* published build: one dark look; clear of system bars on phones */
+  :root { color-scheme: dark; }
+  .screen { padding-left: max(24px, env(safe-area-inset-left, 0px)); padding-right: max(24px, env(safe-area-inset-right, 0px)); }
+  #objective { top: calc(14px + env(safe-area-inset-top, 0px)); right: calc(14px + env(safe-area-inset-right, 0px)); }
+  #info { top: calc(14px + env(safe-area-inset-top, 0px)); left: calc(14px + env(safe-area-inset-left, 0px)); }
+  #gauge, #hint { right: calc(14px + env(safe-area-inset-right, 0px)); bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
+  #status { left: calc(14px + env(safe-area-inset-left, 0px)); bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
+</style>
+</head>
+<body>
+<div id="loading"><div>جاري تجهيز المخزن…</div><div class="bar"><i id="loadbar"></i></div></div>
+<div id="fade"></div>
+<div id="screen" class="screen hidden"><div class="card" id="card" role="dialog" aria-modal="true"></div></div>
+<div id="resume" class="hidden"><div>اضغط للمتابعة</div></div>
+<div id="crosshair" class="hidden"></div>
+<div id="prompt"></div>
+<div id="subtitle" role="status" aria-live="polite"></div>
+<div id="objective" class="hidden"></div>
+<div id="status" class="hidden"></div>
+<div id="info"></div>
+<div id="gauge" class="hidden">الطفاية<div class="track"><i id="gaugeFill"></i></div></div>
+<div id="panel" class="hidden"></div>
+<div id="fps"></div>
+<script>window.SHED_BUILD = {"tier": "web", "tiers": ["low", "web", "sharp"]};</script>
+<script>
+(() => {
+  const plain = window.fetch.bind(window), wrapped = /\.(glb|hdr|bin)$/;
+  window.fetch = async (input, init) => {
+    const url = typeof input === "string" ? input : input.url;
+    if (!wrapped.test(url.split(/[?#]/)[0])) return plain(input, init);
+    const res = await plain(url.split(/[?#]/)[0] + ".wav");
+    if (!res.ok) return res;
+    const buf = await res.arrayBuffer(), size = new DataView(buf).getUint32(40, true);
+    return new Response(buf.slice(44, 44 + size), { status: 200, headers: { "Content-Length": String(size), "Content-Type": "application/octet-stream" } });
+  };
+})();
+</script>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/addons/" } }
+</script>
+<script type="module" src="./src/game/play.js"></script>
+</body>
+</html>
